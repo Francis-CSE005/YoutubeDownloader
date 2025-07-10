@@ -1,9 +1,9 @@
-import os #For Managing files
-import subprocess #For Cancel function
-import threading #For separating the downloading process
+import os
+import threading
 import customtkinter as ctk
 from tkinter import filedialog
 from PIL import Image
+from yt_dlp import YoutubeDL
 
 # App setup
 app = ctk.CTk()
@@ -11,10 +11,6 @@ app.title("YouTube Downloader")
 app.geometry("600x450")
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("blue")
-
-
-# Global variables
-download_process = None
 
 # Folder selection variable
 folder_path = ctk.StringVar(value=os.path.join(os.path.expanduser("~"), "Downloads"))
@@ -42,7 +38,8 @@ format_opt = ctk.StringVar(value="MP4")
 format_menu = ctk.CTkOptionMenu(main_frame, variable=format_opt, values=["MP4", "MP3"], font=("Arial", 13), width=150)
 format_menu.pack(pady=5)
 
-folder_button = ctk.CTkButton(main_frame, text="Select Download Folder", font=("Arial", 13), command=lambda: folder_path.set(filedialog.askdirectory()))
+folder_button = ctk.CTkButton(main_frame, text="Select Download Folder", font=("Arial", 13),
+                               command=lambda: folder_path.set(filedialog.askdirectory()))
 folder_button.pack(pady=10)
 
 folder_display = ctk.CTkLabel(main_frame, textvariable=folder_path, text_color="gray", font=("Arial", 12))
@@ -52,12 +49,11 @@ status_label = ctk.CTkLabel(main_frame, text="", text_color="red", font=("Arial"
 status_label.pack(pady=10)
 
 def threaded_download():
-    global download_process
-    url = url_entry.get() #URL Input
-    folder = folder_path.get() #Downloaded File Path
-    format_choice = format_opt.get() #Selecting the format
+    url = url_entry.get()
+    folder = folder_path.get()
+    format_choice = format_opt.get()
 
-    if not url: #if URL is not Entered
+    if not url:
         status_label.configure(text="Please enter a valid YouTube URL ❗", text_color="red")
         return
 
@@ -65,35 +61,24 @@ def threaded_download():
 
     filename_template = os.path.join(folder, '%(title)s.%(ext)s')
 
+    ydl_opts = {
+        'outtmpl': filename_template,
+        'no-mtime': True,
+        'format': 'bestaudio/best' if format_choice == "MP3" else 'bestvideo+bestaudio',
+        'merge_output_format': 'mp4',
+    }
+
     if format_choice == "MP3":
-        cmd = [
-            "yt-dlp",
-            "--extract-audio",
-            "--audio-format", "mp3",
-            "--audio-quality", "192K",
-            "--no-mtime",
-            "-o", filename_template,
-            url
-        ]
-    else:
-        cmd = [
-            "yt-dlp",
-            "-f", "bestvideo+bestaudio",
-            "--merge-output-format", "mp4",
-            "--no-mtime",
-            "-o", filename_template,
-            url
-        ]
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }]
 
     try:
-        download_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = download_process.communicate()
-
-        if download_process.returncode == 0:
-            status_label.configure(text="Download Complete ✅", text_color="green")
-        else:
-            status_label.configure(text="Error ❌", text_color="red")
-            print(stderr.decode())
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        status_label.configure(text="Download Complete ✅", text_color="green")
     except Exception as e:
         status_label.configure(text=f"Error ❌: {e}", text_color="red")
 
@@ -101,20 +86,12 @@ def download_video():
     thread = threading.Thread(target=threaded_download)
     thread.start()
 
-def cancel_download():
-    global download_process
-    if download_process and download_process.poll() is None:
-        download_process.terminate()
-        status_label.configure(text="Download Cancelled ❌", text_color="red")
-
 # Buttons
 download_button = ctk.CTkButton(main_frame, text="Download", font=("Arial", 13), command=download_video)
 download_button.pack(pady=10)
 
-cancel_button = ctk.CTkButton(main_frame, text="Cancel", font=("Arial", 13), command=cancel_download)
-cancel_button.pack(pady=5)
-
-# Start the app and keeps it running until closed by the user
+# Start the app
 app.mainloop()
+
 
 
